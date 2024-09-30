@@ -116,17 +116,13 @@ class ApiController extends Controller
 
     public function handleGoogleCallback(Request $request)
     {
-
-        $request->validate([
-            'code' => 'required|string',
-        ]);
-
         try {
 
+            $code = $request->input('code');
             $client = new Client();
             $response = $client->post('https://oauth2.googleapis.com/token', [
                 'form_params' => [
-                    'code' => $request->code,
+                    'code' => $code,
                     'client_id' => config('services.google.client_id'),
                     'client_secret' => config('services.google.client_secret'),
                     'redirect_uri' => config('services.google.redirect'),
@@ -140,6 +136,7 @@ class ApiController extends Controller
 
 
             $googleUser = Socialite::driver('google')->stateless()->userFromToken($accessToken);
+
 
             $user = User::where('email', $googleUser->email)->first();
 
@@ -155,6 +152,7 @@ class ApiController extends Controller
                     'is_verified' => 0,
                     'is_blocked' => 1,
                 ]);
+
                 $token = $user->createToken('API Token')->plainTextToken;
 
                 return response()->json([
@@ -164,19 +162,16 @@ class ApiController extends Controller
                 ], 201);
             } else {
 
+                $user->name = $googleUser->name;
+                $user->profile_photo = $googleUser->avatar;
+                $user->google_id = $googleUser->id;
+                $user->save();
                 if (!$user->is_verified || !$user->is_profile_completed) {
-
-                    $user->name = $googleUser->name;
-                    $user->profile_photo = $googleUser->avatar;
-                    $user->google_id = $googleUser->id;
-                    $user->save();
-
                     return response()->json([
                         'message' => 'Complete your profile form.',
                         'user' => $user,
                     ], 200);
                 } else {
-
                     $token = $user->createToken('API Token')->plainTextToken;
 
                     return response()->json([
@@ -194,6 +189,7 @@ class ApiController extends Controller
             ], 500);
         }
     }
+
 
 
 
