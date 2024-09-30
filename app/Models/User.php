@@ -7,11 +7,13 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Str;
 use Zizaco\Entrust\Traits\EntrustUserTrait;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Laravel\Sanctum\HasApiTokens;
 
 
 class User extends Authenticatable
 {
     use Notifiable;
+    use HasApiTokens;
     //use EntrustUserTrait;
     //use SoftDeletes;
 

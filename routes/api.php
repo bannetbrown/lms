@@ -15,12 +15,13 @@ use App\Http\Controllers\Backend\Api\ApiController;
 |
 */
 
-Route::middleware('auth:api')->get('/user', function (Request $request) {
-    return $request->user();
-});
+Route::post('/google-login', [ApiController::class, 'handleGoogleLogin']);
 
+Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    });
 
-Route::prefix('v1')->group(function () {
     Route::get('/all-goal-list', [ApiController::class, 'goallist']);
     Route::get('/learning-sequence-list', [ApiController::class, 'learningsequencelist']);
 

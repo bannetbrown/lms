@@ -13,16 +13,17 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Laravel\Socialite\Facades\Socialite;
 use Exception;
+use Illuminate\Support\Str;
 
 class GoogleLoginController extends Controller
 {
     public function redirectToGoogle()
     {
 
- 
 
 
-       $config = config('services.google'); 
+
+       $config = config('services.google');
         return Socialite::driver('google')->stateless()->redirect();
     }
 
@@ -34,7 +35,7 @@ class GoogleLoginController extends Controller
             $user = User::where('email', $googleUser->email)->first();
 
             if (!$user) {
-                $password = 'Qusteam12345678';
+                $password = Str::random(16);
 
                 $user = User::create([
                     'profile_photo' => $googleUser->avatar,
