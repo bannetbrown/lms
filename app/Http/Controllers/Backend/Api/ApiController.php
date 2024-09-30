@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
+use GuzzleHttp\Client;
 
 class ApiController extends Controller
 {
@@ -100,17 +101,50 @@ class ApiController extends Controller
 //    }
 
 
-    public function handleGoogleLogin(Request $request)
+    public function getGoogleAuthUrl()
     {
-        try {
-            // Retrieve the user information from Google using the provided token
-            $googleUser = Socialite::driver('google')->stateless()->userFromToken($request->token);
+        $googleAuthUrl = Socialite::driver('google')
+            ->stateless()
+            ->redirect()
+            ->getTargetUrl();
 
-            // Check if a user with the given email already exists in the database
+        return response()->json([
+            'url' => $googleAuthUrl,
+        ]);
+    }
+
+
+    public function handleGoogleCallback(Request $request)
+    {
+
+        $request->validate([
+            'code' => 'required|string',
+        ]);
+
+        try {
+
+            $client = new Client();
+            $response = $client->post('https://oauth2.googleapis.com/token', [
+                'form_params' => [
+                    'code' => $request->code,
+                    'client_id' => config('services.google.client_id'),
+                    'client_secret' => config('services.google.client_secret'),
+                    'redirect_uri' => config('services.google.redirect'),
+                    'grant_type' => 'authorization_code',
+                ],
+            ]);
+
+
+            $data = json_decode($response->getBody(), true);
+            $accessToken = $data['access_token'];
+
+
+            $googleUser = Socialite::driver('google')->stateless()->userFromToken($accessToken);
+
             $user = User::where('email', $googleUser->email)->first();
 
-            // If the user does not exist, create a new user
             if (!$user) {
+
                 $user = User::create([
                     'name' => $googleUser->name,
                     'email' => $googleUser->email,
@@ -120,24 +154,25 @@ class ApiController extends Controller
                     'is_profile_completed' => 0,
                     'is_verified' => 0,
                     'is_blocked' => 1,
-                    'api_token' => sha1(time()),
-                    'type' => 'Instructor',
                 ]);
+                $token = $user->createToken('API Token')->plainTextToken;
 
                 return response()->json([
                     'message' => 'New instructor registered. Please complete your profile.',
                     'user' => $user,
+                    'token' => $token,
                 ], 201);
             } else {
 
                 if (!$user->is_verified || !$user->is_profile_completed) {
+
                     $user->name = $googleUser->name;
                     $user->profile_photo = $googleUser->avatar;
                     $user->google_id = $googleUser->id;
                     $user->save();
 
                     return response()->json([
-                        'message' => 'Complete your profile form',
+                        'message' => 'Complete your profile form.',
                         'user' => $user,
                     ], 200);
                 } else {
@@ -145,7 +180,7 @@ class ApiController extends Controller
                     $token = $user->createToken('API Token')->plainTextToken;
 
                     return response()->json([
-                        'message' => 'Login successful',
+                        'message' => 'Login successful.',
                         'user' => $user,
                         'token' => $token,
                     ], 200);
@@ -153,7 +188,10 @@ class ApiController extends Controller
             }
         } catch (\Exception $e) {
 
-            return response()->json(['error' => 'Google login failed', 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => 'Google login failed',
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 

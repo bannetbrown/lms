@@ -15,7 +15,8 @@ use App\Http\Controllers\Backend\Api\ApiController;
 |
 */
 
-Route::post('/google-login', [ApiController::class, 'handleGoogleLogin']);
+Route::get('auth/google/url', [ApiController::class, 'getGoogleAuthUrl']);
+Route::post('auth/google/callback', [ApiController::class, 'handleGoogleCallback']);
 
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::get('/user', function (Request $request) {
