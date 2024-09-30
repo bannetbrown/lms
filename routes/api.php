@@ -15,8 +15,11 @@ use App\Http\Controllers\Backend\Api\ApiController;
 |
 */
 
-Route::get('auth/google/url', [ApiController::class, 'getGoogleAuthUrl']);
-Route::post('auth/google/callback', [ApiController::class, 'handleGoogleCallback']);
+Route::get('/auth/google/redirect', [ApiController::class, 'redirectToGoogle']);
+Route::get('/auth/google/callback', [ApiController::class, 'handleGoogleCallback']);
+
+
+Route::post('/auth/instructor/form', [ApiController::class, 'formSave']);
 
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::get('/user', function (Request $request) {

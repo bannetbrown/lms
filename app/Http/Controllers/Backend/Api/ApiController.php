@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Backend\Api;
 
+use App\Helpers\UserHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Goal;
+use App\Models\InstructorInfo;
 use App\Models\LearningSequence;
 use App\Models\User;
+use App\Models\UserSpecialization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -101,43 +104,15 @@ class ApiController extends Controller
 //    }
 
 
-    public function getGoogleAuthUrl()
+    public function redirectToGoogle()
     {
-        $googleAuthUrl = Socialite::driver('google')
-            ->stateless()
-            ->redirect()
-            ->getTargetUrl();
-
-        return response()->json([
-            'url' => $googleAuthUrl,
-        ]);
+        return Socialite::driver('google')->stateless()->redirect();
     }
-
 
     public function handleGoogleCallback(Request $request)
     {
         try {
-
-            $code = $request->input('code');
-            $client = new Client();
-            $response = $client->post('https://oauth2.googleapis.com/token', [
-                'form_params' => [
-                    'code' => $code,
-                    'client_id' => config('services.google.client_id'),
-                    'client_secret' => config('services.google.client_secret'),
-                    'redirect_uri' => config('services.google.redirect'),
-                    'grant_type' => 'authorization_code',
-                ],
-            ]);
-
-
-            $data = json_decode($response->getBody(), true);
-            $accessToken = $data['access_token'];
-
-
-            $googleUser = Socialite::driver('google')->stateless()->userFromToken($accessToken);
-
-
+            $googleUser = Socialite::driver('google')->stateless()->user();
             $user = User::where('email', $googleUser->email)->first();
 
             if (!$user) {
@@ -145,49 +120,105 @@ class ApiController extends Controller
                 $user = User::create([
                     'name' => $googleUser->name,
                     'email' => $googleUser->email,
-                    'google_id' => $googleUser->id,
                     'profile_photo' => $googleUser->avatar,
+                    'google_id' => $googleUser->id,
+                    'auth_type' => 'google',
                     'password' => Hash::make(Str::random(16)),
                     'is_profile_completed' => 0,
-                    'is_verified' => 0,
                     'is_blocked' => 1,
+                    'api_token' => sha1(time()),
+                    'type' => 'Instructor',
                 ]);
-
-                $token = $user->createToken('API Token')->plainTextToken;
-
-                return response()->json([
-                    'message' => 'New instructor registered. Please complete your profile.',
-                    'user' => $user,
-                    'token' => $token,
-                ], 201);
             } else {
-
-                $user->name = $googleUser->name;
-                $user->profile_photo = $googleUser->avatar;
-                $user->google_id = $googleUser->id;
-                $user->save();
-                if (!$user->is_verified || !$user->is_profile_completed) {
-                    return response()->json([
-                        'message' => 'Complete your profile form.',
-                        'user' => $user,
-                    ], 200);
-                } else {
-                    $token = $user->createToken('API Token')->plainTextToken;
-
-                    return response()->json([
-                        'message' => 'Login successful.',
-                        'user' => $user,
-                        'token' => $token,
-                    ], 200);
-                }
+                $user->update([
+                    'name' => $googleUser->name,
+                    'profile_photo' => $googleUser->avatar,
+                ]);
             }
-        } catch (\Exception $e) {
 
+
+            $token = $user->createToken('API Token')->plainTextToken;
             return response()->json([
-                'error' => 'Google login failed',
-                'message' => $e->getMessage(),
-            ], 500);
+                'message' => 'Instructor  authenticated successfully',
+                'user' => $user,
+                'token' => $token,
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Authentication failed.'], 401);
         }
+    }
+
+    public function formSave(Request $request)
+    {
+
+        if (Auth::user()->is_profile_completed) {
+            return response()->json(['message' => 'Profile already completed'], 400);
+        }
+
+
+        $validator = Validator::make($request->all(), [
+            'linkdin_link' => 'required|string',
+            'gihub_id' => 'required|string',
+            'google_auth_id' => 'required|email',
+            'webaddress' => ['required', 'url', 'website_alive'],
+            'Slack_email' => 'required|email',
+            'Specialization' => 'required|array',
+            'Specialization.*' => 'exists:specializations,id',
+            'twiter_link' => ['required', 'url', 'twiter_link'],
+            'exprience_details' => 'required|string|max:200|min:20',
+        ]);
+
+        $validator->setAttributeNames([
+            'linkdin_link' => 'LinkedIn Link',
+            'gihub_id' => 'GitHub ID',
+            'google_auth_id' => 'Google Auth ID',
+            'webaddress' => 'Web Address',
+            'Slack_email' => 'Slack Email',
+            'Specialization' => 'Specialization',
+            'Specialization.*' => 'Selected Specialization',
+            'twiter_link' => 'Twitter Link',
+            'exprience_details' => 'Experience Details',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json($validator->errors(), 422);
+        }
+
+
+        $info_data = new InstructorInfo();
+        $info_data->user_id = Auth::user()->id;
+        $info_data->website_url = $request->webaddress;
+        $info_data->google_auth_share_drive_email = $request->google_auth_id;
+        $info_data->github_user_name = $request->gihub_id;
+        $info_data->slack_mail_id = $request->Slack_email;
+        $info_data->linkdin_link = $request->linkdin_link;
+        $info_data->twiter_link = $request->twiter_link;
+        $info_data->exprience_short_desc = $request->exprience_details;
+
+
+        if ($info_data->save()) {
+
+            $specializationsIds = $request->Specialization;
+            $user_id = Auth::user()->id;
+
+            $data = collect($specializationsIds)->map(function ($specializationId) use ($user_id) {
+                return [
+                    'user_id' => $user_id,
+                    'specialization_id' => $specializationId,
+                ];
+            })->toArray();
+
+            UserSpecialization::insert($data);
+            User::where('id', $user_id)->update(['is_profile_completed' => 1, 'is_verified' => 0]);
+
+
+            UserHelper::sent_email(Auth::user()->email, 'Registration Submitted', 'Your Account Registration process Complete. Please wait for admin approval!');
+
+            return response()->json(['message' => 'Registration completed successfully.'], 201);
+        }
+
+        return response()->json(['error' => 'Failed to save instructor information.'], 500);
     }
 
 
